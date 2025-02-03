@@ -3,74 +3,67 @@ WalkTrough navigation macro for FreeCAD Perspective view by 747Developments
 """
 
 __author__ = "Radek Reznicek - 747Developments, Spectral Vectors"
-__copyright__ = "Copyright 2021, 747Developments"
+__copyright__ = "Copyright 2021, 747Developments, 2025 Spectral Vectors"
 __license__ = "GPL"
 __email__ = "support@747developments.com"
 __version__ = "1.2"
+
+from math import sin, cos, pi, atan
+import time
 
 import FreeCAD
 import WorkingPlane
 from PySide import QtGui, QtCore
 from pivy import coin
-import Part
-from math import sin, cos, pi, atan
-import time
-import sys
-import random
 
 ## INPUTS
-DEFAULT_WALKTROUGH_SPEED_MM_PER_KEYPRESS = 100.0  # camera moves default speed by keypress
-DEFAULT_WALKTROUGH_SPEED_MM_INCREMENT = 10.0  # speed increment
-TEXT_ACTIVE = "ACTIVE"
-TEXT_FROZEN = "FROZEN"
-
-DEFALUT_MOUSE_ACTIVE = True
-DEFALUT_ELEVATION_FROZEN = False
+DEFAULT_WALK_SPEED_MM = 100.0  # camera moves default speed by keypress
+DEFAULT_WALK_SPEED_INCREMENT = 10.0  # speed increment
 
 DEFAULT_MOUSE_SPEED = 50
 DEFAULT_MOUSE_SPEED_INCREMENT = 5
 MOUSE_SPEED_DIVIDER = 10000
+
 DEFAULT_AZIMUTH_INCREMENT_DEG = 1
 DEFAULT_ELEVATION_INCREMENT_DEG = 1
+
 DEG2RAD = pi / 180.0
 RAD2DEG = 180.0 / pi
 
 
-## walkTroughView CLASS
-class walkTroughView(QtGui.QDialog):
+## WalkView CLASS
+class WalkView(QtGui.QDialog):
 
     ## Init Class
     def __init__(self, view):
-        super(walkTroughView, self).__init__()
+        super(WalkView, self).__init__()
         self.view = view
-        self.cam = FreeCADGui.ActiveDocument.ActiveView.getCameraNode()
+        self.camera = FreeCADGui.ActiveDocument.ActiveView.getCameraNode()
         self.shut_down_flag = False
 
         # Get actual camera position
-        cam_pos = self.cam.position.getValue()
+        camera_position = self.camera.position.getValue()
 
         # Assign actual camera position
-        self.x = cam_pos[0]
-        self.y = cam_pos[1]
-        self.z = cam_pos[2]
-        self.vector_view = Gui.ActiveDocument.ActiveView.getViewDirection()
+        self.x = camera_position[0]
+        self.y = camera_position[1]
+        self.z = camera_position[2]
+        self.view_vector = Gui.ActiveDocument.ActiveView.getViewDirection()
 
         # Set default values
-        self.walktrough_speed_mm = DEFAULT_WALKTROUGH_SPEED_MM_PER_KEYPRESS
-        self.speed_increment = DEFAULT_WALKTROUGH_SPEED_MM_INCREMENT
+        self.walk_speed_mm = DEFAULT_WALK_SPEED_MM
+        self.walk_speed_increment = DEFAULT_WALK_SPEED_INCREMENT
         self.mouse_speed = DEFAULT_MOUSE_SPEED
         self.mouse_speed_increment = DEFAULT_MOUSE_SPEED_INCREMENT
         self.azimuth_increment = DEFAULT_AZIMUTH_INCREMENT_DEG
         self.elevation_increment = DEFAULT_ELEVATION_INCREMENT_DEG
-        self.viewAroundState = DEFALUT_MOUSE_ACTIVE
-        self.elevationFrozen = DEFALUT_ELEVATION_FROZEN
 
         self.azimuth = 0.0
         self.elevation = 0.0
-        if self.vector_view[0] != 0:
-            self.azimuth = atan(self.vector_view[1] / self.vector_view[0])
-        if self.vector_view[1] != 0:
-            self.elevation = atan(self.vector_view[2] / self.vector_view[1])
+        if self.view_vector[0] != 0:
+            self.azimuth = atan(self.view_vector[1] / self.view_vector[0])
+        if self.view_vector[1] != 0:
+            self.elevation = atan(self.view_vector[2] / self.view_vector[1])
         self.d_az_init = 0.0
         self.d_el_init = 0.0
         self.d_az = 0.0
@@ -90,59 +83,57 @@ class walkTroughView(QtGui.QDialog):
 
     ## Update view by mouse motion callback
     def updateMouseMotion(self, mouseEvent):
-
         try:
-            # Only if mouse motion is not frozen
-            if self.viewAroundState == True:
-                event = mouseEvent.getEvent()
-                if event.getTypeId() == coin.SoLocation2Event.getClassTypeId():
+            event = mouseEvent.getEvent()
+            if event.getTypeId() == coin.SoLocation2Event.getClassTypeId():
 
-                    pos = event.getPosition()
-                    self.d_az = int(pos[0])
-                    self.d_el = int(pos[1])
+                pos = event.getPosition()
+                self.d_az = int(pos[0])
+                self.d_el = int(pos[1])
 
-                    self.azimuth += (self.d_az_init - self.d_az) * (
-                        self.mouse_speed / MOUSE_SPEED_DIVIDER
-                    )
-                    self.elevation += (self.d_el_init - self.d_el) * (
-                        self.mouse_speed / MOUSE_SPEED_DIVIDER
-                    )
+                self.azimuth += (self.d_az_init - self.d_az) * (
+                    self.mouse_speed / MOUSE_SPEED_DIVIDER
+                )
+                self.elevation += (self.d_el_init - self.d_el) * (
+                    self.mouse_speed / MOUSE_SPEED_DIVIDER
+                )
+                print(self.elevation)
 
-                    self.d_az_init = self.d_az
-                    self.d_el_init = self.d_el
+                self.d_az_init = self.d_az
+                self.d_el_init = self.d_el
 
-                    self.updateViewVector()
+                self.updateViewVector()
 
-            # If mouse motion is FROZEN only update the camera position
-            else:
-                # Assign actual camera position
-                self.cam_pos = self.cam.position.getValue()
-                self.x = self.cam_pos[0]
-                self.y = self.cam_pos[1]
-                self.z = self.cam_pos[2]
+            # # If mouse motion is FROZEN only update the camera position
+            # else:
+            #     # Assign actual camera position
+            #     self.camera_position = self.camera.position.getValue()
+            #     self.x = self.camera_position[0]
+            #     self.y = self.camera_position[1]
+            #     self.z = self.camera_position[2]
 
         except Exception as ex:
             print("Exception happened during mouse motion update: %s" % (ex))
 
     ## Function to update the view vector
     def updateViewVector(self):
-        self.cam_pos = self.cam.position.getValue()
-        self.vector_view = (
-            self.cam_pos[0] + cos(self.azimuth),
-            self.cam_pos[1] + sin(self.azimuth),
-            self.cam_pos[2] + sin(self.elevation),
+        self.camera_position = self.camera.position.getValue()
+        self.view_vector = (
+            self.camera_position[0] + cos(self.azimuth),
+            self.camera_position[1] + sin(self.azimuth),
+            self.camera_position[2] + sin(self.elevation),
         )
 
-        self.cam.pointAt(
+        self.camera.pointAt(
             coin.SbVec3f(
-                self.vector_view[0],
-                self.vector_view[1],
-                self.vector_view[2],
+                self.view_vector[0],
+                self.view_vector[1],
+                self.view_vector[2],
             ),
             coin.SbVec3f(0, 0, 1),
         )
         FreeCADGui.getMainWindow().statusBar().showMessage(
-            f"W: Forward, S: Backward, A: Left, D: Right, Speed: {self.walktrough_speed_mm}"
+            f"W: Forward, S: Backward, A: Left, D: Right, Speed: {self.walk_speed_mm}"
         )
 
     ## Function to update azimuth
@@ -179,59 +170,45 @@ class walkTroughView(QtGui.QDialog):
                 self.endWalkTrough()
                 self.shut_down_flag = True
 
-            elif key_pressed == coin.SoKeyboardEvent.W:
-                self.x += self.walktrough_speed_mm * cos(self.azimuth)
-                self.y += self.walktrough_speed_mm * sin(self.azimuth)
-                if not self.elevationFrozen:
-                    self.z += self.walktrough_speed_mm * sin(self.elevation)
+            if key_pressed == coin.SoKeyboardEvent.W:
+                self.x += self.walk_speed_mm * cos(self.azimuth)
+                self.y += self.walk_speed_mm * sin(self.azimuth)
 
-            elif key_pressed == coin.SoKeyboardEvent.S:
-                self.y -= self.walktrough_speed_mm * sin(self.azimuth)
-                self.x -= self.walktrough_speed_mm * cos(self.azimuth)
-                if not self.elevationFrozen:
-                    self.z -= self.walktrough_speed_mm * sin(self.elevation)
+                self.z += self.walk_speed_mm * sin(self.elevation)
 
-            elif key_pressed == coin.SoKeyboardEvent.A:
-                self.x += self.walktrough_speed_mm * cos(self.azimuth + pi / 2.0)
-                self.y += self.walktrough_speed_mm * sin(self.azimuth + pi / 2.0)
+            if key_pressed == coin.SoKeyboardEvent.S:
+                self.y -= self.walk_speed_mm * sin(self.azimuth)
+                self.x -= self.walk_speed_mm * cos(self.azimuth)
 
-            elif key_pressed == coin.SoKeyboardEvent.D:
-                self.x -= self.walktrough_speed_mm * cos(self.azimuth + pi / 2.0)
-                self.y -= self.walktrough_speed_mm * sin(self.azimuth + pi / 2.0)
+                self.z -= self.walk_speed_mm * sin(self.elevation)
 
-            elif key_pressed == coin.SoKeyboardEvent.Q:
-                self.z -= self.walktrough_speed_mm * sin(self.elevation)
+            if key_pressed == coin.SoKeyboardEvent.A:
+                self.x += self.walk_speed_mm * cos(self.azimuth + pi / 2.0)
+                self.y += self.walk_speed_mm * sin(self.azimuth + pi / 2.0)
 
-            elif key_pressed == coin.SoKeyboardEvent.E:
-                self.z += self.walktrough_speed_mm * sin(self.elevation)
+            if key_pressed == coin.SoKeyboardEvent.D:
+                self.x -= self.walk_speed_mm * cos(self.azimuth + pi / 2.0)
+                self.y -= self.walk_speed_mm * sin(self.azimuth + pi / 2.0)
 
-            elif key_pressed == coin.SoKeyboardEvent.R:
-                self.walktrough_speed_mm += self.speed_increment
-                self.numericInput.setText(str(self.walktrough_speed_mm))
+            if key_pressed == coin.SoKeyboardEvent.Q:
+                self.z -= self.walk_speed_mm
 
-            elif key_pressed == coin.SoKeyboardEvent.F:
-                self.walktrough_speed_mm -= self.speed_increment
-                self.numericInput.setText(str(self.walktrough_speed_mm))
+            if key_pressed == coin.SoKeyboardEvent.E:
+                self.z += self.walk_speed_mm
 
-            elif key_pressed == coin.SoKeyboardEvent.T:
+            if key_pressed == coin.SoKeyboardEvent.R:
+                self.walk_speed_mm += self.walk_speed_increment
+
+            if key_pressed == coin.SoKeyboardEvent.F:
+                self.walk_speed_mm -= self.walk_speed_increment
+
+            if key_pressed == coin.SoKeyboardEvent.T:
                 self.mouse_speed += self.mouse_speed_increment
-                self.numericInput3.setText(str(self.mouse_speed))
 
-            elif key_pressed == coin.SoKeyboardEvent.G:
+            if key_pressed == coin.SoKeyboardEvent.G:
                 self.mouse_speed -= self.mouse_speed_increment
-                self.numericInput3.setText(str(self.mouse_speed))
 
-            elif key_pressed == coin.SoKeyboardEvent.X:
-                self.viewAroundState = not self.viewAroundState
-                self.setLabelMouseActiveState()
-                time.sleep(0.3)
-
-            elif key_pressed == coin.SoKeyboardEvent.C:
-                self.elevationFrozen = not self.elevationFrozen
-                self.setLabelElevationFrozen()
-                time.sleep(0.3)
-
-            elif key_pressed == coin.SoKeyboardEvent.V:
+            if key_pressed == coin.SoKeyboardEvent.V:
                 self.fitObjectToWindow()
                 time.sleep(0.3)
 
@@ -243,7 +220,7 @@ class walkTroughView(QtGui.QDialog):
 
             # adjust new X, Y,Z values
             if key_pressed != coin.SoKeyboardEvent.X:
-                self.cam.position.setValue(
+                self.camera.position.setValue(
                     (
                         self.x,
                         self.y,
@@ -253,28 +230,6 @@ class walkTroughView(QtGui.QDialog):
             # time.sleep(0.01) # delays for 10 ms
         except Exception as ex:
             print("Exception happened during key press: %s" % (ex))
-
-    ## Function to set label mouse frozen or active
-    def setLabelMouseActiveState(self):
-        label_text = ""
-        if not self.viewAroundState:
-            label_text = "Mouse Motion - %s" % (TEXT_FROZEN)
-            self.label_mouse_motion_indicator.setStyleSheet("color: red")
-        else:
-            label_text = "Mouse Motion - %s" % (TEXT_ACTIVE)
-            self.label_mouse_motion_indicator.setStyleSheet("color: green")
-        self.label_mouse_motion_indicator.setText(label_text)
-
-    ## Function to set label elevation frozen or active
-    def setLabelElevationFrozen(self):
-        label_text = ""
-        if self.elevationFrozen:
-            label_text = "Elevation change - %s" % (TEXT_FROZEN)
-            self.label_elevation_indicator.setStyleSheet("color: red")
-        else:
-            label_text = "Elevation change - %s" % (TEXT_ACTIVE)
-            self.label_elevation_indicator.setStyleSheet("color: green")
-        self.label_elevation_indicator.setText(label_text)
 
     ## Function to fit the all objects to window (The same as: View -> Standard views -> Fit All)
     def fitObjectToWindow(self):
@@ -287,7 +242,7 @@ class walkTroughView(QtGui.QDialog):
     def changeSpeed(self, text):
         try:
             new_speed = float(text)
-            self.walktrough_speed_mm = new_speed
+            self.walk_speed_mm = new_speed
             print("New speed: %.3f mm/keypress" % (new_speed))
         except Exception as ex:
             print("Exception happened during changeSpeed: %s" % (ex))
@@ -296,7 +251,7 @@ class walkTroughView(QtGui.QDialog):
     def changeSpeedIncrement(self, text):
         try:
             new_speed_increment = float(text)
-            self.speed_increment = new_speed_increment
+            self.walk_speed_increment = new_speed_increment
             print("New speed increment: %.3f mm/keypress" % (new_speed_increment))
         except Exception as ex:
             print("Exception happened during changeSpeedIncrement: %s" % (ex))
@@ -342,9 +297,13 @@ class walkTroughView(QtGui.QDialog):
         try:
             print("Remove event callbacks")
             self.view.removeEventCallbackPivy(
-                coin.SoLocation2Event.getClassTypeId(), self.mouseEvent
+                coin.SoLocation2Event.getClassTypeId(),
+                self.mouseEvent,
             )
-            self.view.removeEventCallbackPivy(coin.SoKeyboardEvent.getClassTypeId(), self.keyEvent)
+            self.view.removeEventCallbackPivy(
+                coin.SoKeyboardEvent.getClassTypeId(),
+                self.keyEvent,
+            )
             print("Setting Orthographic view")
             Gui.ActiveDocument.ActiveView.setCameraType("Orthographic")
             # print("Setting ViewFit to all object to screen")
@@ -376,8 +335,7 @@ def main():
     try:
         # CLEAR WINDOWS and console
         mw = Gui.getMainWindow()
-        # c=mw.findChild(QtGui.QPlainTextEdit, "Python console")
-        # c.clear()
+
         r = mw.findChild(QtGui.QTextEdit, "Report view")
         r.clear()
     except Exception as ex:
@@ -419,7 +377,7 @@ def main():
     if flag_open_view:
         # Start the walktrough navigation
         print("Starting Walktrough view")
-        walktroughNav = walkTroughView(actView)
+        walktroughNav = WalkView(actView)
         # mw.menuBar().setEnabled(False)
         pick_style = coin.SoPickStyle()
         pick_style.style.setValue(coin.SoPickStyle.UNPICKABLE)
